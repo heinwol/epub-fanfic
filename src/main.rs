@@ -2,9 +2,10 @@
 
 mod get_data;
 
+use anyhow::Result;
 use get_data::main_;
 
-fn main() {
-    println!("Hello, world!");
-    main_();
+fn main() -> Result<()> {
+    main_()?;
+    Ok(())
 }
