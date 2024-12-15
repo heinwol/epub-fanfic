@@ -1,6 +1,8 @@
 #![allow(dead_code, unused_variables)]
 
 mod get_data;
+mod tags;
+mod utils;
 
 use anyhow::Result;
 use get_data::main_;
