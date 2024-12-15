@@ -106,15 +106,17 @@ mkregex!(RE_SERIES, r"(?i).*series.*");
 mkregex!(RE_STATS, r"(?i).*stat.*");
 
 fn parse_sequence_of_dd_children<'a>(node: &'a Node<'a, 'a>) -> Vec<&'a str> {
-    match node.children().count() {
-        0 => vec![node.text().unwrap_or("")],
-        1 => vec![node.first_child().unwrap().text().unwrap_or("")],
+    (match node.children().count() {
+        0 => vec![*node],
+        1 => vec![node.first_child().unwrap()],
         _ => node
             .children()
             .filter(|elt| elt.has_tag_name("a"))
-            .map(|elt| elt.text().unwrap_or(""))
             .collect(),
-    }
+    })
+    .into_iter()
+    .map(|s| s.text().unwrap_or("").trim())
+    .collect()
 }
 
 fn get_tag_opt<'a>(
