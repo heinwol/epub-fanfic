@@ -60,7 +60,7 @@ fn walk_paths_with_epubs<I: Iterator<Item: AsRef<Path>>>(
     })
 }
 
-pub fn main_() -> Result<()> {
+pub fn generate_workbook() -> Result<()> {
     let mut workbook = Workbook::new();
 
     // Add a worksheet to the workbook.
