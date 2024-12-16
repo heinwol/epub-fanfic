@@ -1,18 +1,12 @@
 use std::{borrow::Borrow, collections::HashMap, sync::LazyLock};
 
+use bevy_reflect::Reflect;
 use regex::Regex;
 use roxmltree::Node;
 
-use crate::utils::mkregex;
+use crate::utils::{mkregex, parse_sequence_of_node_text_children, vec_as_newlines};
 
-fn vec_as_newlines<S>(v: &Vec<String>, s: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    s.serialize_str(&v.join("\n"))
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Reflect)]
 pub struct ParsedAO3Tags {
     pub rating: Option<String>,
     #[serde(serialize_with = "vec_as_newlines")]
@@ -105,20 +99,6 @@ mkregex!(RE_LANGUAGE, r"(?i).*lang.*");
 mkregex!(RE_SERIES, r"(?i).*series.*");
 mkregex!(RE_STATS, r"(?i).*stat.*");
 
-fn parse_sequence_of_dd_children<'a>(node: &'a Node<'a, 'a>) -> Vec<&'a str> {
-    (match node.children().count() {
-        0 => vec![*node],
-        1 => vec![node.first_child().unwrap()],
-        _ => node
-            .children()
-            .filter(|elt| elt.has_tag_name("a"))
-            .collect(),
-    })
-    .into_iter()
-    .map(|s| s.text().unwrap_or("").trim())
-    .collect()
-}
-
 fn get_tag_opt<'a>(
     tag: &AO3Tag<&'a str>,
     hash_map: &'a HashMap<AO3Tag<&'a str>, Node<'a, 'a>>,
@@ -126,9 +106,9 @@ fn get_tag_opt<'a>(
     if !hash_map.contains_key(tag) {
         None
     } else {
-        parse_sequence_of_dd_children(&hash_map[tag])
-            .first()
-            .map(|&s| s.into())
+        parse_sequence_of_node_text_children(&hash_map[tag])
+            .next()
+            .map(|s| s.into())
     }
 }
 
@@ -139,8 +119,7 @@ fn get_tag_vec<'a>(
     if !hash_map.contains_key(tag) {
         vec![]
     } else {
-        parse_sequence_of_dd_children(&hash_map[tag])
-            .into_iter()
+        parse_sequence_of_node_text_children(&hash_map[tag])
             .map(|s| s.into())
             .collect()
     }

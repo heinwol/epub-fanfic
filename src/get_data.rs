@@ -1,11 +1,12 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use anyhow::{anyhow, bail, Result};
+use bevy_reflect::Reflect;
 use itertools::Itertools;
-use log::warn;
+use log::{info, warn};
 use rbook::Ebook;
 use roxmltree::{Document, Node};
 use rust_xlsxwriter::{Format, Workbook, Worksheet};
@@ -13,11 +14,26 @@ use walkdir::{DirEntry, WalkDir};
 
 use crate::{
     tags::{AO3Tag, ParsedAO3Tags},
-    utils::full_node_text,
+    utils::{full_node_text, vec_as_newlines},
 };
 
-pub fn explore_epub<P: AsRef<Path>>(path: P) -> Result<ParsedAO3Tags> {
-    let epub = rbook::Epub::new(&path).unwrap();
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Reflect)]
+pub struct FullFicInfo {
+    path_to_file: PathBuf,
+    title: Option<String>,
+    #[serde(serialize_with = "vec_as_newlines")]
+    creators: Vec<String>,
+    #[serde(flatten)]
+    tags: ParsedAO3Tags,
+}
+
+pub fn write_fic_to_worksheet_row(worksheet: &mut Worksheet, fic_info: &FullFicInfo) -> () {}
+
+pub fn explore_epub<P: AsRef<Path>>(path: P) -> Result<FullFicInfo>
+where
+    PathBuf: From<P>,
+{
+    let epub = rbook::Epub::new(&path)?;
     let reader = epub.reader();
     if let Some(Ok(content)) = reader.fetch_page(0) {
         let content_str = content.as_lossy_str();
@@ -36,15 +52,26 @@ pub fn explore_epub<P: AsRef<Path>>(path: P) -> Result<ParsedAO3Tags> {
 
         let parsed_tags = ParsedAO3Tags::from_hash_map_of_ao3tags(&tags_with_nodes);
 
-        // data_to_excel(&parsed_tags)?;
-        Ok(parsed_tags)
+        warn!("{:?}", epub.metadata().creators());
+
+        Ok(FullFicInfo {
+            path_to_file: path.into(),
+            creators: epub
+                .metadata()
+                .creators()
+                .into_iter()
+                .map(|elt| elt.value().into())
+                .collect(),
+            title: epub.metadata().title().map(|elt| elt.value().into()),
+            tags: parsed_tags,
+        })
     } else {
         bail!("cannot get first page")
     }
 }
 
-fn walk_paths_with_epubs<I: Iterator<Item: AsRef<Path>>>(
-    paths: I,
+fn walk_paths_with_epubs<IP: Iterator<Item: AsRef<Path>>>(
+    paths: IP,
 ) -> impl Iterator<Item = DirEntry> {
     paths.flat_map(|path| {
         WalkDir::new(path)
@@ -60,31 +87,38 @@ fn walk_paths_with_epubs<I: Iterator<Item: AsRef<Path>>>(
     })
 }
 
-pub fn generate_workbook() -> Result<()> {
+pub fn generate_workbook<P, IP>(workbook_path: P, epub_files_paths: IP) -> Result<()>
+where
+    P: AsRef<Path>,
+    IP: Iterator<Item: AsRef<Path>>,
+{
     let mut workbook = Workbook::new();
 
     // Add a worksheet to the workbook.
     let worksheet: &mut Worksheet = workbook.add_worksheet();
 
     let format = Format::new().set_bold();
-    worksheet.deserialize_headers_with_format::<ParsedAO3Tags>(0, 0, &format)?;
 
-    for fic in walk_paths_with_epubs(["ignore"].into_iter()) {
+    worksheet.deserialize_headers_with_format::<FullFicInfo>(0, 0, &format)?;
+
+    for fic in walk_paths_with_epubs(epub_files_paths) {
+        info!("in cycle");
         match explore_epub(fic.path()) {
-            Ok(parsed_tags) => worksheet.serialize(&parsed_tags)?,
+            Ok(fic_info) => {
+                write_fic_to_worksheet_row(worksheet, &fic_info);
+            }
             Err(e) => {
-                warn!("{}", e);
+                info!("{}", e);
                 continue;
             }
         };
         // info!("{}", serde_yaml::to_string(&parsed_tags)?);
     }
 
-    worksheet.set_column_range_format(0, 10, &Format::new().set_text_wrap())?;
+    worksheet.set_column_range_format(0, 100, &Format::new().set_text_wrap())?;
     worksheet.autofit();
 
-    let result_path = Path::new("workbook.xlsx");
-    workbook.save(result_path)?;
+    workbook.save(workbook_path)?;
     Ok(())
 }
 

@@ -1,18 +1,19 @@
 use std::{env, path::PathBuf};
 
+use iced::Element;
 use iced::{
     alignment::Horizontal,
+    color,
     widget::{button, center, column, container, scrollable, text},
-    Size,
+    Size, Task,
 };
-use iced::{Element, Font};
 use itertools::Itertools;
+use log::info;
 
-const ICON_FONT: Font = Font::with_name("icons");
+use crate::get_data::generate_workbook;
 
 pub fn main() -> iced::Result {
     iced::application("Checkbox - Iced", State::update, State::view)
-        .font(include_bytes!("../ignore/fonts/icons.ttf").as_slice())
         .window_size(Size::<f32> {
             height: 300.0,
             width: 400.0,
@@ -21,69 +22,99 @@ pub fn main() -> iced::Result {
         .run()
 }
 
+type GenerationResult = Result<(), String>;
+
 #[derive(Default)]
 struct State {
     picked_paths: Vec<PathBuf>,
     xlsx_path: Option<PathBuf>,
+    processing: bool,
+    generation_result: Option<GenerationResult>,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
-    PickedPaths(Vec<PathBuf>),
-    PickedXlsxPath(Option<PathBuf>),
+    PickedPaths,
+    PickedXlsxPath,
     Pass,
+    Process,
+    Generated(GenerationResult),
+}
+
+async fn gen_wb(xlsx_path: Option<PathBuf>, picked_paths: Vec<PathBuf>) -> GenerationResult {
+    generate_workbook(xlsx_path.unwrap(), picked_paths.iter()).map_err(|e| e.to_string())
 }
 
 impl State {
-    fn update(&mut self, message: Message) {
+    fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::PickedPaths(paths) => self.picked_paths = paths.clone(),
-            Message::PickedXlsxPath(path) => self.xlsx_path = path.clone(),
-            Message::Pass => (),
+            Message::PickedPaths => {
+                self.picked_paths = select_epub_files();
+                Task::none()
+            }
+            Message::PickedXlsxPath => {
+                self.xlsx_path = select_xlsx_file();
+                Task::none()
+            }
+            Message::Pass => Task::none(),
+            Message::Process => {
+                self.processing = true;
+                info!("processing");
+                Task::perform(
+                    gen_wb(self.xlsx_path.clone(), self.picked_paths.clone()),
+                    Message::Generated,
+                )
+            }
+            Message::Generated(res) => {
+                info!("generated!");
+                self.processing = false;
+                self.generation_result = Some(res.clone());
+                match res {
+                    Ok(()) => (),
+                    Err(e) => (),
+                }
+                Task::none()
+            }
         }
     }
 
     fn view(&self) -> Element<Message> {
-        let get_files_button = button("Select epub files to process")
-            .on_press_with(|| Message::PickedPaths(select_epub_files()));
+        let get_files_button =
+            button(text("Select epub files to process")).on_press(Message::PickedPaths);
+        let selected_files_text =
+            container(scrollable(text(format_paths(&self.picked_paths)).size(12)))
+                .padding(10)
+                .max_height(100)
+                .style(container::rounded_box);
 
-        let selected_files_text = text(format_paths(&self.picked_paths))
-            .size(16)
-            .wrapping(text::Wrapping::WordOrGlyph);
+        let get_xlsx_button =
+            button(text("Select where to write result")).on_press(Message::PickedXlsxPath);
 
-        let cont = container("This text is centered inside a rounded box!")
-            .padding(10)
-            // .center(800)
-            .style(container::rounded_box);
+        let process_button = button(text("Process files")).on_press_maybe(
+            if !self.processing && !self.picked_paths.is_empty() && self.xlsx_path.is_some() {
+                Some(Message::Process)
+            } else {
+                None
+            },
+        );
 
-        let process_button = button("Process files").on_press(Message::Pass);
-
-        // let styled_checkbox = |label| {
-        //     checkbox(label, true).on_toggle_maybe(self.default.then_some(Message::StyledToggled))
-        // };
-
-        // let checkboxes = row![
-        //     styled_checkbox("Primary").style(checkbox::primary),
-        //     styled_checkbox("Secondary").style(checkbox::secondary),
-        //     styled_checkbox("Success").style(checkbox::success),
-        //     styled_checkbox("Danger").style(checkbox::danger),
-        // ]
-        // .spacing(20);
-
-        // let custom_checkbox = checkbox("Custom", self.custom)
-        //     // .on_toggle(Message::CustomToggled)
-        //     .icon(checkbox::Icon {
-        //         font: ICON_FONT,
-        //         code_point: '\u{e901}',
-        //         size: None,
-        //         line_height: text::LineHeight::Relative(1.0),
-        //         shaping: text::Shaping::Basic,
-        //     });
-
+        let result = {
+            match self.generation_result.as_ref() {
+                None => text("..."),
+                Some(Ok(())) => text("Success").color(color!(0x118B50)),
+                Some(Err(e)) => text!("Error encountered:\n{e}").color(color!(0xFF748B)),
+            }
+        };
         let content = scrollable(
-            column![get_files_button, selected_files_text, cont, process_button]
-                .spacing(20)
-                .align_x(Horizontal::Center),
+            column![
+                get_files_button,
+                selected_files_text,
+                get_xlsx_button,
+                process_button,
+                result
+            ]
+            .spacing(20)
+            .align_x(Horizontal::Center),
         );
 
         center(content).into()
@@ -92,10 +123,17 @@ impl State {
 
 fn select_epub_files() -> Vec<PathBuf> {
     rfd::FileDialog::new()
-        // .add_filter("epub", &["epub"])
+        .add_filter("epub", &["epub"])
         .set_directory(env::current_dir().unwrap_or(".".into()))
         .pick_files()
         .unwrap_or(vec![])
+}
+fn select_xlsx_file() -> Option<PathBuf> {
+    rfd::FileDialog::new()
+        .add_filter("spreadsheet", &["xlsx", "xlx", "xls"])
+        .set_file_name("fics_parsing_result.xlsx")
+        .set_directory(env::current_dir().unwrap_or(".".into()))
+        .save_file()
 }
 
 fn format_paths(v: &Vec<PathBuf>) -> String {
