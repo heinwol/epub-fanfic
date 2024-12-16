@@ -1,12 +1,11 @@
 use std::{borrow::Borrow, collections::HashMap, sync::LazyLock};
 
-use bevy_reflect::Reflect;
 use regex::Regex;
 use roxmltree::Node;
 
 use crate::utils::{mkregex, parse_sequence_of_node_text_children, vec_as_newlines};
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Reflect)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ParsedAO3Tags {
     pub rating: Option<String>,
     #[serde(serialize_with = "vec_as_newlines")]

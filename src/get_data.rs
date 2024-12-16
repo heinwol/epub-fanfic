@@ -4,7 +4,6 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Result};
-use bevy_reflect::Reflect;
 use itertools::Itertools;
 use log::{info, warn};
 use rbook::Ebook;
@@ -13,21 +12,10 @@ use rust_xlsxwriter::{Format, Workbook, Worksheet};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::{
+    serialization::{write_fic_to_worksheet_row, FullFicInfo, FullFicInfoUnwrapped},
     tags::{AO3Tag, ParsedAO3Tags},
-    utils::{full_node_text, vec_as_newlines},
+    utils::full_node_text,
 };
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Reflect)]
-pub struct FullFicInfo {
-    path_to_file: PathBuf,
-    title: Option<String>,
-    #[serde(serialize_with = "vec_as_newlines")]
-    creators: Vec<String>,
-    #[serde(flatten)]
-    tags: ParsedAO3Tags,
-}
-
-pub fn write_fic_to_worksheet_row(worksheet: &mut Worksheet, fic_info: &FullFicInfo) -> () {}
 
 pub fn explore_epub<P: AsRef<Path>>(path: P) -> Result<FullFicInfo>
 where
@@ -51,8 +39,6 @@ where
         }
 
         let parsed_tags = ParsedAO3Tags::from_hash_map_of_ao3tags(&tags_with_nodes);
-
-        warn!("{:?}", epub.metadata().creators());
 
         Ok(FullFicInfo {
             path_to_file: path.into(),
@@ -99,10 +85,10 @@ where
 
     let format = Format::new().set_bold();
 
-    worksheet.deserialize_headers_with_format::<FullFicInfo>(0, 0, &format)?;
+    // TODO: format
+    worksheet.deserialize_headers_with_format::<FullFicInfoUnwrapped>(0, 0, &format)?;
 
     for fic in walk_paths_with_epubs(epub_files_paths) {
-        info!("in cycle");
         match explore_epub(fic.path()) {
             Ok(fic_info) => {
                 write_fic_to_worksheet_row(worksheet, &fic_info);
