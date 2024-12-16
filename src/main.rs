@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_variables, unused_must_use)]
 
-mod frontend;
+mod frontend_iced;
 mod get_data;
 mod tags;
 mod utils;
@@ -13,7 +13,7 @@ fn main() -> Result<()> {
     let mut clog = colog::default_builder();
 
     if cfg!(debug_assertions) {
-        clog.filter(None, log::LevelFilter::Info);
+        clog.filter(None, log::LevelFilter::Trace);
     } else {
         clog.filter(None, log::LevelFilter::Warn);
     }
@@ -25,7 +25,7 @@ fn main() -> Result<()> {
     //     .pick_files();
     // println!("{:?}", files);
 
-    frontend::main().unwrap();
+    frontend_iced::main()?;
 
     generate_workbook()?;
     Ok(())
