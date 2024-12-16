@@ -1,4 +1,5 @@
 #![allow(dead_code, unused_variables, unused_must_use)]
+#![windows_subsystem = "windows"]
 
 mod frontend_iced;
 mod get_data;
