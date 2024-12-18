@@ -1,6 +1,9 @@
 use std::{path::PathBuf, sync::LazyLock};
 
-use crate::{tags::ParsedAO3Tags, utils::vec_as_newlines};
+use crate::{
+    tags::ParsedAO3Tags,
+    utils::{pub_static_with_lock, static_with_lock, vec_as_newlines},
+};
 use anyhow::bail;
 use log::warn;
 use rust_xlsxwriter::{Color, Format, Worksheet};
@@ -21,10 +24,21 @@ pub struct FullFicInfo {
     pub tags: ParsedAO3Tags,
 }
 
-static FICMETAINFO_FIELD_NAMES: LazyLock<&[&str]> =
-    LazyLock::new(|| serde_introspect::<FicMetaInfo>());
-static PARSEDAO3TAGS_FIELD_NAMES: LazyLock<&[&str]> =
-    LazyLock::new(|| serde_introspect::<ParsedAO3Tags>());
+static_with_lock!(
+    FICMETAINFO_FIELD_NAMES,
+    &[&str],
+    serde_introspect::<FicMetaInfo>()
+);
+static_with_lock!(
+    PARSEDAO3TAGS_FIELD_NAMES,
+    &[&str],
+    serde_introspect::<ParsedAO3Tags>()
+);
+pub_static_with_lock!(
+    ALL_TABLE_COLUMNS,
+    Vec<&str>,
+    [*FICMETAINFO_FIELD_NAMES, *PARSEDAO3TAGS_FIELD_NAMES].concat()
+);
 
 fn serialize_struct_fields_to_vec_of_string<S: Serialize>(
     strct: &S,

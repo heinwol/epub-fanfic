@@ -7,12 +7,14 @@ use anyhow::{anyhow, bail, Result};
 use itertools::Itertools;
 use log::{info, warn};
 use rbook::Ebook;
-use roxmltree::{Document, Node};
+use roxmltree::Node;
 use rust_xlsxwriter::{Format, Workbook, Worksheet};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::{
-    serialization::{write_fic_to_worksheet_row, write_headers, FicMetaInfo, FullFicInfo},
+    serialization::{
+        write_fic_to_worksheet_row, write_headers, FicMetaInfo, FullFicInfo, ALL_TABLE_COLUMNS,
+    },
     tags::{AO3Tag, ParsedAO3Tags},
     utils::full_node_text,
 };
@@ -25,7 +27,14 @@ where
     let reader = epub.reader();
     if let Some(Ok(content)) = reader.fetch_page(0) {
         let content_str = content.as_lossy_str();
-        let doc = Document::parse(&content_str)?;
+        let doc = roxmltree::Document::parse_with_options(
+            &content_str,
+            roxmltree::ParsingOptions {
+                allow_dtd: true,
+                ..Default::default()
+            },
+        )
+        .map_err(|err| anyhow!("error during parsing: {}", err))?;
 
         let tags = doc
             .root()
@@ -90,19 +99,27 @@ where
     write_headers(worksheet)?;
 
     for (i, fic) in walk_paths_with_epubs(epub_files_paths).enumerate() {
+        info!(
+            "exploring epub file `{}`...",
+            fic.path().to_str().unwrap_or("")
+        );
         match explore_epub(fic.path()) {
             Ok(fic_info) => {
+                info!("{:?}", fic_info);
                 write_fic_to_worksheet_row(worksheet, i + 1, &fic_info);
             }
             Err(e) => {
-                info!("{}", e);
+                warn!("{}", e);
                 continue;
             }
         };
-        // info!("{}", serde_yaml::to_string(&parsed_tags)?);
     }
 
-    worksheet.set_column_range_format(0, 100, &Format::new().set_text_wrap())?;
+    worksheet.set_column_range_format(
+        0,
+        (*ALL_TABLE_COLUMNS).len().try_into().unwrap(),
+        &Format::new().set_text_wrap(),
+    )?;
     worksheet.autofit();
 
     workbook.save(workbook_path)?;

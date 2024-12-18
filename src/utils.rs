@@ -1,16 +1,26 @@
-// use std::sync::LazyLock;
-
-// use regex::Regex;
+use roxmltree::Node;
+use std::path::PathBuf;
 
 macro_rules! mkregex {
     ($regex_name:ident, $pattern:expr) => {
         static $regex_name: LazyLock<Regex> = LazyLock::new(|| Regex::new($pattern).unwrap());
     };
 }
-use std::path::PathBuf;
+
+macro_rules! static_with_lock {
+    ($static_name:ident, $type_:ty, $pattern:expr) => {
+        static $static_name: LazyLock<$type_> = LazyLock::new(|| $pattern);
+    };
+}
+macro_rules! pub_static_with_lock {
+    ($static_name:ident, $type_:ty, $pattern:expr) => {
+        pub static $static_name: LazyLock<$type_> = LazyLock::new(|| $pattern);
+    };
+}
 
 pub(crate) use mkregex;
-use roxmltree::Node;
+pub(crate) use pub_static_with_lock;
+pub(crate) use static_with_lock;
 
 pub fn full_node_text<'input>(node: &Node<'_, 'input>) -> &'input str {
     &node.document().input_text()[node.range()]
