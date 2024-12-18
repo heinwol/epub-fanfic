@@ -12,7 +12,7 @@ use rust_xlsxwriter::{Format, Workbook, Worksheet};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::{
-    serialization::{write_fic_to_worksheet_row, FullFicInfo, FullFicInfoUnwrapped},
+    serialization::{write_fic_to_worksheet_row, write_headers, FicMetaInfo, FullFicInfo},
     tags::{AO3Tag, ParsedAO3Tags},
     utils::full_node_text,
 };
@@ -41,14 +41,16 @@ where
         let parsed_tags = ParsedAO3Tags::from_hash_map_of_ao3tags(&tags_with_nodes);
 
         Ok(FullFicInfo {
-            path_to_file: path.into(),
-            creators: epub
-                .metadata()
-                .creators()
-                .into_iter()
-                .map(|elt| elt.value().into())
-                .collect(),
-            title: epub.metadata().title().map(|elt| elt.value().into()),
+            meta_info: FicMetaInfo {
+                path_to_file: path.into(),
+                creators: epub
+                    .metadata()
+                    .creators()
+                    .into_iter()
+                    .map(|elt| elt.value().into())
+                    .collect(),
+                title: epub.metadata().title().map(|elt| elt.value().into()),
+            },
             tags: parsed_tags,
         })
     } else {
@@ -85,13 +87,12 @@ where
 
     let format = Format::new().set_bold();
 
-    // TODO: format
-    worksheet.deserialize_headers_with_format::<FullFicInfoUnwrapped>(0, 0, &format)?;
+    write_headers(worksheet)?;
 
-    for fic in walk_paths_with_epubs(epub_files_paths) {
+    for (i, fic) in walk_paths_with_epubs(epub_files_paths).enumerate() {
         match explore_epub(fic.path()) {
             Ok(fic_info) => {
-                write_fic_to_worksheet_row(worksheet, &fic_info);
+                write_fic_to_worksheet_row(worksheet, i + 1, &fic_info);
             }
             Err(e) => {
                 info!("{}", e);
