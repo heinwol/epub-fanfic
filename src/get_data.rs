@@ -1,12 +1,13 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
+    path::Path,
+    usize,
 };
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Result as AnyResult};
 use itertools::Itertools;
 use log::{info, warn};
-use rbook::Ebook;
+use rbook::{xml::Element, Ebook, Epub};
 use roxmltree::Node;
 use rust_xlsxwriter::{Format, Workbook, Worksheet};
 use walkdir::{DirEntry, WalkDir};
@@ -19,52 +20,17 @@ use crate::{
     utils::full_node_text,
 };
 
-pub fn explore_epub<P: AsRef<Path>>(path: P) -> Result<FullFicInfo>
-where
-    PathBuf: From<P>,
-{
+pub fn explore_epub<P: AsRef<Path>>(path: P) -> AnyResult<FullFicInfo> {
     let epub = rbook::Epub::new(&path)?;
-    let reader = epub.reader();
-    if let Some(Ok(content)) = reader.fetch_page(0) {
-        let content_str = content.as_lossy_str();
-        let doc = roxmltree::Document::parse_with_options(
-            &content_str,
-            roxmltree::ParsingOptions {
-                allow_dtd: true,
-                ..Default::default()
-            },
-        )
-        .map_err(|err| anyhow!("error during parsing: {}", err))?;
-
-        let tags = doc
-            .root()
-            .descendants()
-            .find(|it| it.has_tag_name("dl") && it.attribute("class").unwrap_or("") == "tags")
-            .ok_or_else(|| anyhow!("cannot parse document tags"))?;
-
-        let (tags_with_nodes, unknown_tags) = process_dt_dd_elements_to_hash_map(&tags)?;
-        if !unknown_tags.is_empty() {
-            warn!("Unknown tags encountered: {:?}", unknown_tags)
-        }
-
-        let parsed_tags = ParsedAO3Tags::from_hash_map_of_ao3tags(&tags_with_nodes);
-
-        Ok(FullFicInfo {
-            meta_info: FicMetaInfo {
-                path_to_file: path.into(),
-                creators: epub
-                    .metadata()
-                    .creators()
-                    .into_iter()
-                    .map(|elt| elt.value().into())
-                    .collect(),
-                title: epub.metadata().title().map(|elt| elt.value().into()),
-            },
-            tags: parsed_tags,
-        })
-    } else {
-        bail!("cannot get first page")
-    }
+    let meta_info = extract_fic_meta_info(&path, &epub);
+    let tags = extract_fic_tags(&epub);
+    Ok(FullFicInfo {
+        meta_info,
+        tags: tags.map_err(|err| err.to_string()),
+    })
+    // match extract_fic_tags(&epub) {
+    //     Ok(tags) => Ok(FullFicInfo { meta_info, tags }),
+    // };
 }
 
 fn walk_paths_with_epubs<IP: Iterator<Item: AsRef<Path>>>(
@@ -84,7 +50,7 @@ fn walk_paths_with_epubs<IP: Iterator<Item: AsRef<Path>>>(
     })
 }
 
-pub fn generate_workbook<P, IP>(workbook_path: P, epub_files_paths: IP) -> Result<()>
+pub fn generate_workbook<P, IP>(workbook_path: P, epub_files_paths: IP) -> AnyResult<()>
 where
     P: AsRef<Path>,
     IP: Iterator<Item: AsRef<Path>>,
@@ -124,12 +90,66 @@ where
     Ok(())
 }
 
-// fn match_tag_text(tag_text: &str) -> &'static str {}
+fn extract_fic_meta_info<P: AsRef<Path>>(path: P, epub: &Epub) -> FicMetaInfo {
+    fn extract_vec(v: Vec<&Element>) -> Vec<String> {
+        v.into_iter().map(|elt| elt.value().into()).collect()
+    }
+    fn extract_option(v: Option<&Element>) -> Option<String> {
+        v.map(|elt| elt.value().into())
+    }
+
+    FicMetaInfo {
+        path_to_file: path.as_ref().to_path_buf(),
+        creators: extract_vec(epub.metadata().creators()),
+        title: extract_option(epub.metadata().title()),
+        publisher: extract_vec(epub.metadata().publisher()),
+        description: {
+            let description = extract_option(epub.metadata().description());
+            description.clone().map(|s| {
+                html2text::from_read(s.as_bytes(), usize::MAX).unwrap_or_else(|err| {
+                    warn!("could not convert description to text: {}", err);
+                    description.unwrap()
+                })
+            })
+        },
+    }
+}
+
+fn extract_fic_tags(epub: &Epub) -> AnyResult<ParsedAO3Tags> {
+    let reader = epub.reader();
+    let content = match reader.fetch_page(0) {
+        Some(Ok(content)) => content,
+        None => bail!("could not match first page of document due to lack of such"),
+        Some(Err(err)) => bail!(err),
+    };
+    let content_str = content.as_lossy_str();
+    let doc = roxmltree::Document::parse_with_options(
+        &content_str,
+        roxmltree::ParsingOptions {
+            allow_dtd: true,
+            ..Default::default()
+        },
+    )
+    .map_err(|err| anyhow!("error during parsing: {}", err))?;
+
+    let tags = doc
+        .root()
+        .descendants()
+        .find(|it| it.has_tag_name("dl") && it.attribute("class").unwrap_or("") == "tags")
+        .ok_or_else(|| anyhow!("cannot parse document tags"))?;
+
+    let (tags_with_nodes, unknown_tags) = process_dt_dd_elements_to_hash_map(&tags)?;
+    if !unknown_tags.is_empty() {
+        warn!("Unknown tags encountered: {:?}", unknown_tags)
+    }
+
+    Ok(ParsedAO3Tags::from_hash_map_of_ao3tags(&tags_with_nodes))
+}
 
 /// here `node` is expected to be a `<dl class="tags">` element
 fn process_dt_dd_elements_to_hash_map<'a>(
     node: &'a Node<'a, 'a>,
-) -> Result<(HashMap<AO3Tag<&'a str>, Node<'a, 'a>>, HashSet<&'a str>)> {
+) -> AnyResult<(HashMap<AO3Tag<&'a str>, Node<'a, 'a>>, HashSet<&'a str>)> {
     assert_eq!(node.attribute("class"), Some("tags"));
     let mut result = HashMap::<AO3Tag<&'a str>, Node<'a, 'a>>::new();
     let mut unknown_tags = HashSet::<&'a str>::new();
