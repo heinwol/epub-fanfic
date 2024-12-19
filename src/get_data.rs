@@ -94,8 +94,6 @@ where
     // Add a worksheet to the workbook.
     let worksheet: &mut Worksheet = workbook.add_worksheet();
 
-    let format = Format::new().set_bold();
-
     write_headers(worksheet)?;
 
     for (i, fic) in walk_paths_with_epubs(epub_files_paths).enumerate() {

@@ -1,5 +1,4 @@
 use roxmltree::Node;
-use std::path::PathBuf;
 
 macro_rules! mkregex {
     ($regex_name:ident, $pattern:expr) => {
@@ -48,15 +47,15 @@ where
     s.serialize_str(&v.join("\n"))
 }
 
-pub fn serialize_pathbuf<S>(path: &PathBuf, ser: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    ser.serialize_str(
-        &path
-            .clone()
-            .into_os_string()
-            .into_string()
-            .unwrap_or("".into()),
-    )
-}
+// pub fn serialize_pathbuf<S>(path: &PathBuf, ser: S) -> Result<S::Ok, S::Error>
+// where
+//     S: serde::Serializer,
+// {
+//     ser.serialize_str(
+//         &path
+//             .clone()
+//             .into_os_string()
+//             .into_string()
+//             .unwrap_or("".into()),
+//     )
+// }

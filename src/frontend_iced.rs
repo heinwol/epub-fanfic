@@ -32,6 +32,7 @@ struct State {
     generation_result: Option<GenerationResult>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 enum Message {
     PickedPaths,
@@ -71,7 +72,7 @@ impl State {
                 self.generation_result = Some(res.clone());
                 match res {
                     Ok(()) => (),
-                    Err(e) => (),
+                    Err(_) => (),
                 }
                 Task::none()
             }
