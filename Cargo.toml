@@ -5,11 +5,9 @@ edition = "2021"
 
 license = "GPL-2.0+"
 
-# [[bin]]
-# name = "epub-fanfic-explorer"
-
-# test = false
-# bench = false
+[features]
+default = []
+no_gui = []
 
 [dependencies]
 anyhow = { version = "1.0.94", features = ["backtrace"] }

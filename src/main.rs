@@ -19,7 +19,11 @@ fn main() -> Result<()> {
     }
     clog.init();
 
+    #[cfg(not(feature = "no_gui"))]
     frontend_iced::main()?;
-    // get_data::generate_workbook("./res.xlsx", ["./ignore/"].iter()).unwrap();
+
+    #[cfg(feature = "no_gui")]
+    get_data::generate_workbook("./res.xlsx", ["./ignore/"].iter()).unwrap();
+
     Ok(())
 }
